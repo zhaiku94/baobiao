@@ -1575,8 +1575,10 @@ function generateWeeklyGrid() {
         // 样式微调：半点时间颜色更浅
         const labelOpacity = (m === "30") ? "opacity-30" : "font-bold text-gray-400";
 
-        row.innerHTML = `<div class="flex items-center justify-center text-[8px] ${labelOpacity} font-mono h-6">${timeLabel}</div>`;
-        
+        // --- 修改方案 A：区分整点和半点颜色 ---
+// 整点用深灰色 (text-gray-600)，半点用浅灰色 (text-gray-300)
+const timeColor = (m === "00") ? "text-gray-600 font-bold" : "text-gray-300 font-normal";
+row.innerHTML = `<div class="flex items-center justify-center text-[10px] ${timeColor} font-mono h-6">${timeLabel}</div>`;        
         for (let day = 1; day <= 7; day++) {
             // 使用特定的 slotId，包含小时和分钟，例如 slot-1-6.5
             const slotId = `slot-${day}-${hour}`;
