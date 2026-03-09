@@ -1,0 +1,2178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">    <title>复盘系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+
+/* 针对手机端：防止点击输入框时页面缩放 */
+@media screen and (max-width: 768px) {
+    input, 
+    textarea, 
+    select,
+    .table-input,
+    .clean-input,
+    .edit-input {
+        font-size: 16px !important; /* 强制达到 16px 阈值 */
+    }
+}
+
+/* --- 时间表 --- */
+/* --- 日期选择按钮化（唯一保留版） --- */
+.date-picker-wrapper {
+    position: relative;
+    width: 100%;
+    height: 32px; 
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #eef2ff;
+    border: 1px solid d1d5db;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden; /* 确保子元素不溢出 */
+}
+
+.date-picker-wrapper:hover {
+    background-color: #e0e7ff;
+    border-color: #a5b4fc;
+}
+
+/* 图标缩小 */
+.date-picker-wrapper span.text-sm {
+    font-size: 0.75rem; /* 约 12px */
+    line-height: 1;
+}
+
+/* 核心：让 input 完全透明并盖在文字上方 */
+#week-start-picker {
+    position: absolute;
+    inset: 0;
+    opacity: 0;          /* 关键：完全透明 */
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    z-index: 10;
+    /* 移除所有系统外观，确保在各浏览器点击区域一致 */
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+/* 强制隐藏 Webkit 内核的日历小图标，防止它干扰点击 */
+#week-start-picker::-webkit-calendar-picker-indicator {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+.picker-label {
+    font-size: 11px;
+    font-weight: 900;
+    color: #4338ca;
+    text-transform: uppercase;
+    pointer-events: none; /* 确保点击穿透到下层的 input */
+    line-height: 1.2;
+}
+
+
+/* 确保时间列和日期选择器对齐 */
+.grid-cols-8 > div:first-child {
+width: 45px !important; /* 从 60px 缩小到 45px */
+    flex-shrink: 0;
+}
+
+/* 调整顶部控制栏的内边距，使其与下方网格同步 */
+.controls-container {
+    display: flex;
+    align-items: center;
+    padding-left: 0; /* 根据需要微调 */
+}
+
+
+/* --- 新增：丸型图标基础样式 --- */
+.category-dot {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px; /* 丸型 */
+    font-size: 11px;
+    font-weight: bold;
+    border: 1px solid rgba(0,0,0,0.05);
+    white-space: nowrap; /* 防止文字换行 */
+    flex: 3; 
+    margin: 0 2px; /* 增加一点间距防止粘连 */
+    max-width: 100px; /* 可选：防止在宽屏上变得太长 */
+    min-width: 40px; /* 设定最小宽度防止文字缩在一起 */
+    text-align: center;
+    justify-content: center;
+}
+
+/* 如果屏幕太窄，自动缩小字体 */
+@media (max-width: 640px) {
+    .category-dot {
+        padding: 2px 6px;
+        font-size: 9px;
+    }
+}
+
+
+
+/* 将 dot 类名映射到已有的配色类上 */
+.dot-team { background-color: #dbeafe !important; color: #1e40af; }
+.dot-field { background-color: #fef3c7 !important; color: #92400e; }
+.dot-plan { background-color: #de7e5c6e !important; color: #191717; }
+.dot-grow { background-color: #dcfce7 !important; color: #166534; }
+.dot-church { background-color: #f3e8ff !important; color: #6b21a8; }
+.dot-other { background-color: #f3f4f6 !important; color: #374151; }
+
+
+.time-slot {
+    height: 24px;
+    font-size: 8px;           /* 进一步缩小字号 */
+    line-height: 1.1;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0 2px;
+    
+    /* 核心修复：防止文字溢出 */
+    overflow: hidden;
+    white-space: nowrap;      /* 强制不换行 */
+    text-overflow: ellipsis;  /* 超出显示省略号 */
+    text-align: center;
+    cursor: help;             /* 提示用户可以悬浮查看全文 */
+}
+
+.table-input {
+    border: 1px solid transparent;
+    background: #f9fafb;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 16px;
+    width: 100%;
+    transition: all 0.2s;
+}
+.table-input:focus {
+    background: white;
+    border-color: #6366f1;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+.duration-badge {
+    background: #eef2ff;
+    color: #4338ca;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+    .time-block {
+    height: 60px;
+    border-radius: 8px;
+    border: 1px solid #f3f4f6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #fff;
+}
+.time-block:hover { transform: scale(1.05); z-index: 10; }
+.time-block.sleep { background-color: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.time-block.work { background-color: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+.time-block.ministry { background-color: #f3e8ff; color: #6b21a8; border-color: #e9d5ff; }
+.time-block.sport { background-color: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.time-block.chaos { background-color: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+
+        .page { display: none; }
+        .page.active { display: block; }
+        .nav-btn.active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        
+        @keyframes fadeInRight {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .animate-fade-in { animation: fadeInRight 0.3s ease-out forwards; }
+
+        /* 行内编辑基础样式 */
+.editable-text {
+    border-bottom: 2px solid #e5e7eb;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-block;
+    min-width: 120px;
+    padding: 2px 4px;
+    height: 30px;        /* 强制固定高度 */
+    line-height: 1;      /* 消除行高干扰 */
+    box-sizing: border-box;
+    font-size: 16px;
+    
+}
+.editable-text:hover {
+    border-bottom-color: #3b82f6;
+    background-color: #f8faff;
+}
+
+/* 隐藏原有的 entry-card 容器间距，让姓名和日期排在一行 */
+.info-row {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    align-items: flex-end; /* 强制所有内容底部对齐 */
+    padding: 0.8rem 0;
+}
+
+/* 隐藏原有的输入框，直到被点击 */
+.edit-input {
+    display: none;
+    border: none;
+    border-bottom: 2px solid #3b82f6;
+    outline: none;
+    background: transparent;
+    font-weight: 600;
+    color: #374151;
+    width: auto;
+    min-width: 120px;
+    font-size: 16px;
+    line-height: 1;      /* 消除行高干扰 */
+    height: 32px;        /* 强制固定高度 */
+    box-sizing: border-box;
+}
+
+        /* --- 新增：输入项卡片化样式 --- */
+        .entry-card {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 12px 16px;
+            border-left: 5px solid #e5e7eb;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+.entry-card textarea {
+    min-height: 100px; 
+}
+
+        .entry-card:focus-within {
+            transform: translateX(6px);
+            box-shadow: 6px 10px 20px rgba(0, 0, 0, 0.05);
+            background: linear-gradient(to right, #ffffff, #fafafa);
+        }
+        /* 侧边颜色锚点 */
+        .border-name { border-left-color: #60a5fa; }
+        .border-period { border-left-color: #fbbf24; }
+        .border-target { border-left-color: #f87171; }
+
+        .entry-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 800;
+            color: #060606;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 2px;
+        }
+        .clean-input {
+            width: 100%;
+            border: none !important;
+            outline: none !important;
+            background: transparent;
+            font-weight: 600;
+            color: #374151;
+            padding: 2px 0;
+        }
+
+        /* --- 核心价值样式优化 --- */
+        .value-line {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 8px;
+            border-radius: 10px;
+            border-left: 4px solid; 
+            font-style: italic;
+            font-weight: 800;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background-color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+        }
+        .value-line:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08); }
+
+        .line-spirit { background: linear-gradient(135deg, #eff6ff, #ffffff); border-color: #3b82f6; color: #1d4ed8; }
+        .line-pray { background: linear-gradient(135deg, #f5f3ff, #ffffff); border-color: #8b5cf6; color: #6d28d9; }
+        .line-love { background: linear-gradient(135deg, #fef2f2, #ffffff); border-color: #ef4444; color: #dc2626; }
+        .line-sport { background: linear-gradient(135deg, #f0fdf4, #ffffff); border-color: #10b981; color: #059669; }
+
+        /* 1. 隐藏默认的年/月/日文字 */
+input[type="date"]::-webkit-datetime-edit {
+    color: transparent;
+    padding: 0;          /* 消除浏览器默认内边距 */
+    margin: 0;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* 2. 当输入框有聚焦（被点击）或者 已经选择了日期（有效值）时，显示文字 */
+input[type="date"]:focus::-webkit-datetime-edit,
+input[type="date"]:valid::-webkit-datetime-edit {
+    color: #374151;
+}
+
+/* 3. 强制隐藏部分浏览器在输入框为空时显示的内部占位符 */
+input[type="date"]:invalid::-webkit-datetime-edit {
+    color: transparent;
+}
+
+
+/* --- 具体内容：5大维度配色 --- */
+.border-energy { border-left-color: #10b981; }  /* 精力-绿 */
+.border-spirit { border-left-color: #6366f1; }  /* 灵性-靛青 */
+.border-relation { border-left-color: #f43f5e; } /* 关系-红 */
+.border-time { border-left-color: #f59e0b; }    /* 时间-橙 */
+.border-ministry { border-left-color: #8b5cf6; } /* 事工-紫 */
+
+/* 详解区域的虚线顶边 */
+.detail-area {
+    border-top: 1px dashed #f3f4f6;
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+/* 批量控制详解区域的标题（例如：★ 本周高光） */
+.detail-area label {
+    font-size: 14px; /* 在这里统一修改标题大小 */
+    letter-spacing: 0.05em;
+}
+
+/* 批量控制详解区域的输入框（用户填写的文字） */
+.detail-area textarea {
+    font-size: 13px; /* 在这里统一修改输入内容的大小 */
+    line-height: 1.6; /* 增加行高，让文字不拥挤 */
+    font-style: normal !important; /* 强制覆盖 italic 类 */
+    
+}
+
+/* 如果你想让“关系卡”、“时间卡”里的详解也同步变大 */
+.detail-area .clean-input {
+    font-size: 13px !important;
+}
+
+/* 精力卡 */
+/* 优化滑块容器间距 */
+.slider-container {
+    margin: 0;           /* 清除原有的 margin */
+    padding: 12px 0;     /* 使用 padding 替代 margin，防止外边距折叠 */
+    display: flex;
+    flex-direction: column;
+    gap: 8px;            /* 统一标题、滑块、刻度之间的微间距 */
+}
+
+/* 确保所有滑块组之间的间距一致 */
+.slider-group-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;           /* 这里统一控制 三个指数 之间的间距 */
+    margin-bottom: 24px;
+}
+.range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 5px;
+    outline: none;
+    /* 绿到红的渐变背景 */
+    background: linear-gradient(to right, #10b981 0%, #f59e0b 50%, #ef4444 100%);
+}
+/* 滑块圆点样式 */
+.range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #374151;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #7e7b7b;
+    margin-top: 10px;
+    font-weight: bold;
+}
+.slider-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #4b5563;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+}
+.score-badge {
+    color: #10b981;
+    font-family: monospace;
+}
+
+
+/* 灵力卡 */
+
+/* 点赞图标评分样式 */
+.rating-group {
+    display: flex;
+    justify-content: space-between; /* 核心：让 5 个图标均匀分布，首尾对齐边框 */
+    align-items: center;
+    margin: 15px 0 25px 0;
+    width: 100%; /* 确保撑满卡片宽度 */
+}
+.thumb-icon {
+   font-size: 26px; /* 5个图标时可以稍微大一点，更有点击感 */
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: grayscale(100%) brightness(30%);
+    user-select: none;
+}
+.thumb-icon:hover {
+    transform: scale(1.25);
+}
+/* 选中状态的渐变色由 JS 动态控制 */
+.thumb-icon.active {
+    filter: grayscale(0%) brightness(100%);
+}
+
+/* 统一灵性卡片侧边色 */
+.border-spirit { border-left-color: #6366f1; }
+
+/* 关系卡 */
+
+/* 爱心图标评分样式 */
+.heart-icon {
+    font-size: 26px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    filter: grayscale(100%) brightness(30%);
+    user-select: none;
+}
+.heart-icon.active {
+    filter: grayscale(0%) brightness(100%);
+}
+/* 关系卡侧边颜色统一 */
+.border-relation { border-left-color: #f43f5e; }
+
+
+/* 事工卡 */
+/* 移除数字输入框的箭头（Chrome, Safari, Edge, Opera） */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 移除数字输入框的箭头（Firefox） */
+input[type=number] {
+    appearance: none;
+    -moz-appearance: textfield;
+}
+
+/* 事工卡边框颜色 */
+.border-ministry { border-left-color: #8b5cf6; }
+
+/* 模态框主题色映射 */
+.theme-team { border-color: #3b82f6 !important; }
+.theme-field { border-color: #fbbf24 !important; }
+.theme-plan { border-color: #f87171 !important; }
+.theme-grow { border-color: #10b981 !important; }
+.theme-church { border-color: #8b5cf6 !important; }
+.theme-other { border-color: #6b7280 !important; }
+
+/* 允许时间轴格子响应点击 */
+.time-slot { cursor: pointer; transition: opacity 0.2s; }
+.time-slot:hover { opacity: 0.8; }
+
+/* 时间卡 */
+/* 确保 Tooltip 容器不会被 card 遮挡 */
+#time-distribution-container {
+    position: relative;
+    z-index: 20;
+}
+
+#distribution-tooltip {
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    /* 强制置顶，防止在某些浏览器下被遮挡 */
+    z-index: 9999; 
+}
+
+/* 让进度条更易于交互 */
+#distribution-bar div {
+    cursor: help;
+}
+
+
+
+
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800">
+
+<nav class="bg-white shadow-sm sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto px-4">
+        <div class="flex justify-between items-center py-4">
+            <div class="flex justify-around flex-1">
+                <button onclick="showPage('focus')" id="nav-focus" class="nav-btn active font-medium pb-1 transition-all">职责焦点</button>
+                <button onclick="showPage('time')" id="nav-time" class="nav-btn font-medium pb-1 transition-all">时间表</button>
+                <button onclick="showPage('input')" id="nav-input" class="nav-btn font-medium pb-1 transition-all">报表</button>
+                <button onclick="showPage('analysis')" id="nav-analysis" class="nav-btn font-medium pb-1 transition-all">复盘分析</button>
+            </div>
+            <button onclick="saveFullPage()" class="ml-4 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-lg shadow-md transition-all flex items-center gap-2">
+                <span>💾 保存快照</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+    <main class="max-w-4xl mx-auto p-4 md:p-6">
+
+        <div id="page-time" class="page space-y-6">
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+  
+            <div class="grid grid-cols-8 gap-1 mb-6 items-center">
+    <div class="col-span-1 flex justify-center">
+        <div class="date-picker-wrapper">
+            <span class="picker-label">周起始</span>
+            <input type="date" id="week-start-picker" onchange="handleWeekDateChange(this.value)">
+        </div>
+    </div>
+
+    <div class="col-span-7 flex flex-wrap justify-between sm:justify-between items-center gap-y-2 px-1">
+        <span class="category-dot dot-team">团队</span>
+        <span class="category-dot dot-field">禾场</span>
+        <span class="category-dot dot-plan">计划</span>
+        <span class="category-dot dot-grow">发展</span>
+        <span class="category-dot dot-church">教会</span>
+        <span class="category-dot dot-other">其他</span>
+    </div>
+</div>
+
+
+
+    <div class="overflow-x-auto">
+        <div class="min-width-[800px]">
+            <div class="grid grid-cols-8 gap-1 mb-2 text-center">
+    <div class="text-[10px] font-bold text-gray-400">时间</div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周一<span id="date-label-1" class="text-[8px] font-normal opacity-60"></span></div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周二<span id="date-label-2" class="text-[8px] font-normal opacity-60"></span></div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周三<span id="date-label-3" class="text-[8px] font-normal opacity-60"></span></div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周四<span id="date-label-4" class="text-[8px] font-normal opacity-60"></span></div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周五<span id="date-label-5" class="text-[8px] font-normal opacity-60"></span></div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周六<span id="date-label-6" class="text-[8px] font-normal opacity-60"></span></div>
+    <div class="text-[10px] font-bold text-gray-600 flex flex-col">周日<span id="date-label-7" class="text-[8px] font-normal opacity-60"></span></div>
+</div>
+            
+            <div id="weekly-time-grid" class="space-y-1">
+                </div>
+        </div>
+    </div>
+</div>
+
+</div>
+
+
+<div id="page-input" class="page space-y-6">
+    <div class="grid grid-cols-1 gap-6">
+                
+<div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <h3 class="font-bold text-gray-400 text-xs tracking-widest mb-6 flex items-center">
+        <span class="bg-blue-500 w-2 h-2 rounded-full mr-2"></span>SECTION 01 / 基本信息
+    </h3>
+
+<div class="space-y-8"> 
+    <div class="info-row px-2 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-6">
+        <div class="flex items-center gap-2">
+            <span class="text-base font-black text-black uppercase tracking-tighter">姓名:</span>
+            <div class="relative inline-block">
+                <span id="name-display" class="editable-text font-bold text-gray-700" onclick="startEdit('name')"> </span>
+                <input type="text" id="name-input" class="edit-input" onblur="finishEdit('name')" onkeypress="handleEnter(event, 'name')">
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <span class="text-base font-black text-black uppercase tracking-tighter">复盘时段:</span>
+            <div class="relative inline-block flex items-center gap-2">
+                <span id="period-display" class="editable-text font-bold text-gray-700" onclick="startEdit('period')"> </span>
+                <input type="date" id="period-input" class="edit-input" onblur="finishEdit('period')" onchange="finishEdit('period')" required>
+                <div id="week-display" class="hidden whitespace-nowrap bg-amber-50 text-amber-600 px-2 py-0.5 rounded text-[10px] font-bold border border-amber-100 shadow-sm animate-fade-in"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="w-full">
+        <div class="text-center mb-5">
+            <label class="inline-block text-[14px] font-bold text-gray-500 uppercase tracking-[0.25em] border-b-2 border-blue-400 pb-1">我们的价值</label>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="value-line line-spirit">依靠圣灵</div>
+            <div class="value-line line-pray">恒切祷告</div>
+            <div class="value-line line-love">彼此相爱</div>
+            <div class="value-line line-sport">致力运动</div>
+        </div>
+    </div>
+
+    <div class="w-full">
+        <div class="entry-card border-target w-full">
+            <label class="entry-label">本周重要目标</label>
+            <textarea class="clean-input resize-none w-full block mt-1" rows="2"></textarea>
+        </div>
+    </div>
+
+</div>
+</div>
+
+
+<div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <h3 class="font-bold text-gray-400 text-xs tracking-widest mb-6 flex items-center">
+        <span class="bg-green-500 w-2 h-2 rounded-full mr-2"></span>SECTION 02 / 具体内容
+    </h3>
+
+    <div class="space-y-6">
+       
+        <div class="entry-card border-energy">
+    <label class="entry-label">精力卡</label>
+    
+<div class="slider-group-wrapper mt-4">
+            <div class="slider-container">
+            <div class="slider-title">
+                <span>身体指数</span>
+                <span id="body-val" class="score-badge">5</span>
+            </div>
+            <input type="range" min="1" max="10" value="5" class="range-slider" oninput="updateScore('body', this.value)">
+            <div class="slider-labels">
+                <span>青年人</span>
+                <span>老人</span>
+                <span>生锈生化人</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>疲劳指数</span>
+                <span id="fatigue-val" class="score-badge">5</span>
+            </div>
+            <input type="range" min="1" max="10" value="5" class="range-slider" oninput="updateScore('fatigue', this.value)">
+            <div class="slider-labels">
+                <span>身心平衡</span>
+                <span>死顶</span>
+                <span>宕机</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>焦虑指数</span>
+                <span id="anxiety-val" class="score-badge">5</span>
+            </div>
+            <input type="range" min="1" max="10" value="5" class="range-slider" oninput="updateScore('anxiety', this.value)">
+            <div class="slider-labels">
+                <span>压力管理大师</span>
+                <span>倦怠</span>
+                <span>请就医</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="detail-area space-y-4 pt-6">
+    <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-green-200 transition-all shadow-sm">
+        <label class="  font-extrabold text-gray-700 block mb-2 tracking-wide">
+            ★ 本周高光：<span class="font-normal text-gray-400 ml-1">什么时候感到能量最充沛？</span>
+        </label>
+        <textarea class="clean-input text-sm italic font-normal leading-relaxed w-full resize-y" 
+                  rows="3" ></textarea>
+    </div>
+
+    <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-orange-200 transition-all shadow-sm">
+        <label class="  font-extrabold text-gray-700 block mb-2 tracking-wide">
+            ✘ 精力黑洞：<span class="font-normal text-gray-400 ml-1">哪些事情过度消耗了我？</span>
+        </label>
+        <textarea class="clean-input text-sm italic font-normal leading-relaxed w-full resize-y" 
+                  rows="3" ></textarea>
+    </div>
+
+    <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-red-200 transition-all shadow-sm">
+        <label class="  font-extrabold text-gray-700 block mb-2 tracking-wide">
+            ⟳ 修复行动：<span class="font-normal text-gray-400 ml-1">下周我将如何“充电”？</span>
+        </label>
+        <textarea class="clean-input text-sm italic font-normal leading-relaxed w-full resize-y" 
+                  rows="3"></textarea>
+    </div>
+</div>
+</div>
+
+     <div class="entry-card border-spirit">
+    <label class="entry-label">灵性卡</label>
+
+    <div class="space-y-6 mb-8">
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>与神的关系指数</span>
+                <span id="relation-god-val" class="score-badge">0/5</span>
+            </div>
+            <div class="rating-group" data-type="relation-god">
+                <span class="thumb-icon" onclick="setRating('relation-god', 1)">👍</span>
+                <span class="thumb-icon" onclick="setRating('relation-god', 2)">👍</span>
+                <span class="thumb-icon" onclick="setRating('relation-god', 3)">👍</span>
+                <span class="thumb-icon" onclick="setRating('relation-god', 4)">👍</span>
+                <span class="thumb-icon" onclick="setRating('relation-god', 5)">👍</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>祷告指数</span>
+                <span id="pray-val" class="score-badge">0/5</span>
+            </div>
+            <div class="rating-group" data-type="pray">
+                <span class="thumb-icon" onclick="setRating('pray', 1)">👍</span>
+                <span class="thumb-icon" onclick="setRating('pray', 2)">👍</span>
+                <span class="thumb-icon" onclick="setRating('pray', 3)">👍</span>
+                <span class="thumb-icon" onclick="setRating('pray', 4)">👍</span>
+                <span class="thumb-icon" onclick="setRating('pray', 5)">👍</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>读经指数</span>
+                <span id="bible-val" class="score-badge">0/5</span>
+            </div>
+            <div class="rating-group" data-type="bible">
+                <span class="thumb-icon" onclick="setRating('bible', 1)">👍</span>
+                <span class="thumb-icon" onclick="setRating('bible', 2)">👍</span>
+                <span class="thumb-icon" onclick="setRating('bible', 3)">👍</span>
+                <span class="thumb-icon" onclick="setRating('bible', 4)">👍</span>
+                <span class="thumb-icon" onclick="setRating('bible', 5)">👍</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="detail-area space-y-4 pt-6">
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-indigo-200 transition-all shadow-sm">
+            <label class="  font-extrabold text-black block mb-2 tracking-wide">
+                ⚓ 静默时刻：<span class="font-normal text-gray-500 ml-1">本周有怎样的默想、祷告或深度阅读？</span>
+            </label>
+            <textarea class="clean-input text-sm italic font-normal leading-relaxed w-full resize-y" rows="3"></textarea>
+        </div>
+
+      
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-indigo-200 transition-all shadow-sm">
+            <label class="  font-extrabold text-black block mb-2 tracking-wide">
+                ✨ 灵感/领受：<span class="font-normal text-gray-500 ml-1">本周最触动我的一句经文或一个感悟是什么？</span>
+            </label>
+            <textarea class="clean-input text-sm italic font-normal leading-relaxed w-full resize-y" rows="3" ></textarea>
+        </div>
+    </div>
+</div>
+
+       <div class="entry-card border-relation w-full">
+    <label class="entry-label">关系卡 / RELATIONSHIP INDEX</label>
+
+    <div class="space-y-6 mb-8 mt-4">
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>家人关系</span>
+                <span id="rel-family-val" class="score-badge" style="color: #f43f5e;">0/5</span>
+            </div>
+            <div class="rating-group" data-type="rel-family">
+                <span class="heart-icon" onclick="setHeartRating('rel-family', 1)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-family', 2)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-family', 3)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-family', 4)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-family', 5)">❤️</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>队友关系</span>
+                <span id="rel-team-val" class="score-badge" style="color: #f43f5e;">0/5</span>
+            </div>
+            <div class="rating-group" data-type="rel-team">
+                <span class="heart-icon" onclick="setHeartRating('rel-team', 1)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-team', 2)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-team', 3)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-team', 4)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-team', 5)">❤️</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-title">
+                <span>门徒关系</span>
+                <span id="rel-disciple-val" class="score-badge" style="color: #f43f5e;">0/5</span>
+            </div>
+            <div class="rating-group" data-type="rel-disciple">
+                <span class="heart-icon" onclick="setHeartRating('rel-disciple', 1)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-disciple', 2)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-disciple', 3)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-disciple', 4)">❤️</span>
+                <span class="heart-icon" onclick="setHeartRating('rel-disciple', 5)">❤️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="detail-area space-y-4 pt-6">
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-red-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🏠 核心圈：<span class="font-normal text-gray-500 ml-1">我是否给了家人、挚友足够的质量时间 (Quality Time)？</span>
+            </label>
+            <textarea class="clean-input text-sm italic w-full" rows="2"></textarea>
+        </div>
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-red-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🤝 冲突/和解：<span class="font-normal text-gray-500 ml-1">是否有未处理的误解或需要修复的关系？</span>
+            </label>
+            <textarea class="clean-input text-sm italic w-full" rows="2"></textarea>
+        </div>
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-red-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🎁 对他人的贡献：<span class="font-normal text-gray-500 ml-1">我本周服事了谁？鼓励了谁？</span>
+            </label>
+            <textarea class="clean-input text-sm italic w-full" rows="2"></textarea>
+        </div>
+    </div>
+</div>
+
+       
+
+      <div class="entry-card border-ministry w-full">
+    <label class="entry-label">事工卡</label>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 mt-4">
+        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
+            <span class="text-[10px] font-bold text-gray-400 uppercase mb-1">福音预工</span>
+            <input type="number" class="w-full text-center bg-transparent font-bold text-lg text-blue-600 focus:outline-none" placeholder="0">
+            <span class="text-[9px] text-gray-400">人数</span>
+        </div>
+        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
+            <span class="text-[10px] font-bold text-gray-400 uppercase mb-1">传福音挑战</span>
+            <input type="number" class="w-full text-center bg-transparent font-bold text-lg text-orange-600 focus:outline-none" placeholder="0">
+            <span class="text-[9px] text-gray-400">人数</span>
+        </div>
+        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
+            <span class="text-[10px] font-bold text-gray-400 uppercase mb-1">决志人数</span>
+            <input type="number" class="w-full text-center bg-transparent font-bold text-lg text-red-600 focus:outline-none" placeholder="0">
+            <span class="text-[9px] text-gray-400">人数</span>
+        </div>
+        <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
+            <span class="text-[10px] font-bold text-gray-400 uppercase mb-1">门训人数</span>
+            <input type="number" class="w-full text-center bg-transparent font-bold text-lg text-purple-600 focus:outline-none" placeholder="0">
+            <span class="text-[9px] text-gray-400">人数</span>
+        </div>
+    </div>
+
+    <div class="detail-area space-y-4 pt-6">
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-blue-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🙏 最感恩：<span class="font-normal text-gray-500 ml-1">过去一周我在事工上最感恩的是什么？</span>
+            </label>
+            <textarea class="clean-input text-sm w-full" rows="3" ></textarea>
+        </div>
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-orange-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🔥 最大挑战：<span class="font-normal text-gray-500 ml-1">过去一周我在事工上最大的挑战是什么？</span>
+            </label>
+            <textarea class="clean-input text-sm w-full" rows="3" ></textarea>
+        </div>
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-purple-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🎯 核心焦点：<span class="font-normal text-gray-500 ml-1">下周我在事工上的核心焦点是什么？</span>
+            </label>
+            <textarea class="clean-input text-sm w-full" rows="3" ></textarea>
+        </div>
+    </div>
+</div>
+
+<div class="entry-card border-time">
+    <label class="entry-label">时间卡</label>
+    
+    <div id="time-distribution-container" class="my-4 space-y-2">
+        <div class="flex justify-between items-end mb-1">
+            <span class="text-[10px] font-bold text-gray-400"></span>
+            <span id="total-hours-badge" class="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">总计: 0h</span>
+        </div>
+        <div id="distribution-bar" class="w-full h-4 bg-gray-100 rounded-full flex overflow-hidden shadow-inner">
+            </div>
+
+            <div id="distribution-tooltip" class="hidden absolute z-50 bg-gray-900/90 text-white p-3 rounded-lg text-[11px] shadow-xl backdrop-blur-sm pointer-events-none min-w-[150px]">
+        <div id="tooltip-cat" class="font-bold border-b border-white/20 pb-1 mb-1 mb-2 italic">分类名称</div>
+        <div id="tooltip-items" class="space-y-1 max-h-40 overflow-y-auto">
+            </div>
+    </div>
+        <div id="distribution-legend" class="grid grid-cols-3 gap-y-1 gap-x-2 pt-1">
+            </div>
+    </div>
+
+   <div class="detail-area space-y-4 pt-6">
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-amber-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                🪨 大石块：<span class="font-normal text-gray-500 ml-1">本周的“重要紧急”事项是否得到了优先处理？</span>
+            </label>
+            <textarea class="clean-input text-sm italic w-full" rows="2" placeholder="例如：完成了核心方案初稿，但周三被杂事打断..."></textarea>
+        </div>
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-blue-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                📱 碎裂时间：<span class="font-normal text-gray-500 ml-1">手机屏幕使用时间是否超标？哪里的时间被浪费了？</span>
+            </label>
+            <textarea class="clean-input text-sm italic w-full" rows="2" placeholder="例如：睡前刷短视频1小时，需要警惕。"></textarea>
+        </div>
+
+        <div class="bg-gray-50/50 p-4 rounded-xl border border-transparent focus-within:border-indigo-200 transition-all shadow-sm">
+            <label class="text-[13px] font-extrabold text-black block mb-2 tracking-wide">
+                ✂️ 下周预案：<span class="font-normal text-gray-500 ml-1">根据这周的节奏，下周需要“断舍离”哪些日程？</span>
+            </label>
+            <textarea class="clean-input text-sm italic w-full" rows="2" placeholder="例如：取消不必要的周五茶歇，专注完成报告。"></textarea>
+        </div>
+</div>
+
+    </div>
+</div>
+</div>
+
+
+
+<div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <h3 class="font-bold text-gray-400 text-xs tracking-widest mb-6 flex items-center">
+        <span class="bg-purple-500 w-2 h-2 rounded-full mr-2"></span>SECTION 03 / 总结展望
+    </h3>
+
+    <div class="space-y-6">
+        <div class="bg-purple-50/30 p-4 rounded-xl border border-transparent focus-within:border-purple-200 transition-all shadow-sm">
+            <label class="text-[14px] font-extrabold text-purple-900 block mb-2 tracking-wide flex items-center">
+                <span class="mr-2">🙌</span> 本周最感恩：
+                <span class="font-normal text-purple-400 text-xs ml-auto italic">Counting Blessings</span>
+            </label>
+            <textarea class="clean-input text-sm w-full bg-transparent" 
+                      rows="3" 
+                      placeholder="这一周里，哪件事让你最深刻感受到恩典？"></textarea>
+        </div>
+
+        <div class="bg-amber-50/30 p-4 rounded-xl border border-transparent focus-within:border-amber-200 transition-all shadow-sm">
+            <label class="text-[14px] font-extrabold text-amber-900 block mb-2 tracking-wide flex items-center">
+                <span class="mr-2">🎯</span> 下周一号目标：
+                <span class="font-normal text-amber-500 text-xs ml-auto italic">The One Thing</span>
+            </label>
+            <textarea class="clean-input text-sm font-bold w-full bg-transparent text-amber-900" 
+                      rows="2" 
+                      placeholder="只选一件最核心的事！如果下周只做成这一件事，你会觉得非常成功？"></textarea>
+        </div>
+    </div>
+</div>
+
+                
+<div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <h3 class="font-bold text-gray-400 text-xs tracking-widest mb-6 flex items-center">
+        <span class="bg-orange-500 w-2 h-2 rounded-full mr-2"></span>SECTION 04 / 内容导出
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <button onclick="downloadAsImage()" class="flex-1 bg-indigo-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2">
+    <span>📸 导出复盘长图</span>
+</button>
+        
+        <button onclick="downloadMinistryCSV()" class="flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 font-bold py-3 px-6 rounded-xl border border-emerald-100 hover:bg-emerald-100 transition-all">
+            <span>📊 导出事工数据 (CSV)</span>
+        </button>
+    </div>
+</div>    
+ </div>
+    </div>     
+
+    <div id="page-analysis" class="page space-y-6">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <h3 class="font-bold text-gray-400 text-xs tracking-widest mb-6 flex items-center">
+            <span class="bg-indigo-500 w-2 h-2 rounded-full mr-2"></span>SECTION 05 / 时间配置效率分析
+        </h3>
+        
+        <div id="analysis-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            </div>
+
+        <div class="mt-8 p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+            <h4 class="text-sm font-bold text-gray-700 mb-2">💡 策略建议</h4>
+            <p id="strategy-advice" class="text-xs text-gray-500 leading-relaxed italic">
+                数据不足，请先在“时间表”页面记录本周的事工安排。
+            </p>
+        </div>
+    </div>
+</div>
+
+<div id="page-focus" class="page active space-y-6">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 border-t-4 border-t-blue-500">
+        <h3 class="font-bold text-gray-400 text-xs tracking-widest mb-6 flex items-center">
+            <span class="bg-blue-500 w-2 h-2 rounded-full mr-2"></span>SECTION 00 / 身份与定位
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">姓名</label>
+                <input type="text" class="table-input font-bold" >
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">所属团队</label>
+                <input type="text" class="table-input" >
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">当前角色</label>
+                <input type="text" class="table-input" >
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">队长 (Leader)</label>
+                <input type="text" class="table-input">
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">教练 (Coach)</label>
+                <input type="text" class="table-input" >
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">角色目标</label>
+                <input type="text" class="table-input" >
+            </div>
+            <div class="space-y-1 md:col-span-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">起始日期</label>
+                <input type="date" class="table-input">
+            </div>
+            <div class="space-y-1 md:col-span-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">评估日期</label>
+                <input type="date" class="table-input">
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="font-bold text-gray-400 text-xs tracking-widest flex items-center">
+                <span class="bg-indigo-500 w-2 h-2 rounded-full mr-2"></span>SECTION 01 / 关键事工计划
+            </h3>
+            <button onclick="addFocusRow()" class="text-xs bg-indigo-50 text-indigo-600 font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-all">
+                + 添加项目
+            </button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-gray-100">
+                        <th class="py-3 px-2 text-[11px] font-bold text-gray-400 uppercase w-1/3">关键事工项目</th>
+                        <th class="py-3 px-2 text-[11px] font-bold text-gray-400 uppercase">具体行动点 (Action Steps)</th>
+                        <th class="py-3 px-2 text-[11px] font-bold text-gray-400 uppercase w-16 text-center">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="focus-table-body">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+
+
+    </main>
+        
+
+    <script>
+
+
+// 核心修复：如果 window 上已经有了注入的数据，就使用注入的数据，否则初始化为空
+let eventData = window.eventData || [];
+
+
+//基本信息
+
+// 进入编辑状态
+function startEdit(id) {
+    const display = document.getElementById(id + '-display');
+    const input = document.getElementById(id + '-input');
+    
+    display.style.display = 'none';
+    input.style.display = 'inline-block';
+    input.focus();
+    
+    // 如果是日期，尝试模拟点击打开面板
+    if(id === 'period') {
+        input.showPicker(); // 部分现代浏览器支持直接弹出日历
+    }
+}
+
+// 结束编辑状态并保存
+function finishEdit(id) {
+    const display = document.getElementById(id + '-display');
+    const input = document.getElementById(id + '-input');
+    
+    if (input.value) {
+        display.innerText = input.value;
+        display.classList.remove('text-gray-400');
+        display.classList.add('text-gray-700');
+        
+        // 如果是日期，触发周数计算
+        if(id === 'period') {
+            updateWeekInfo(); 
+        }
+    }
+    
+    display.style.display = 'inline-block';
+    input.style.display = 'none';
+}
+
+// 处理回车键
+function handleEnter(event, id) {
+    if (event.key === 'Enter') {
+        finishEdit(id);
+    }
+}
+
+//灵力卡评分函数
+        function setRating(type, score) {
+    // 更新数字显示
+    document.getElementById(type + '-val').innerText = score + '/5';
+    
+    // 获取对应的图标组
+    const group = document.querySelector(`[data-type="${type}"]`);
+    const icons = group.querySelectorAll('.thumb-icon');
+    
+    // 计算渐变色：1分(灰绿) -> 5分(深绿)
+    // 0分时由CSS控制为黑色
+    const greenShades = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
+    const activeColor = greenShades[score - 1];
+
+    icons.forEach((icon, index) => {
+        if (index < score) {
+            icon.classList.add('active');
+            icon.style.filter = 'grayscale(0%)';
+            icon.style.color = activeColor;
+        } else {
+            icon.classList.remove('active');
+            icon.style.filter = 'grayscale(100%) brightness(30%)';
+            icon.style.color = 'inherit';
+        }
+    });
+}
+
+//关系卡评分函数
+function setHeartRating(type, score) {
+    // 更新数字显示
+    document.getElementById(type + '-val').innerText = score + '/5';
+    
+    // 获取对应的图标组
+    const group = document.querySelector(`[data-type="${type}"]`);
+    const icons = group.querySelectorAll('.heart-icon');
+    
+    // 红色系渐变：从浅红到深红
+    const redShades = ['#fda4af', '#fb7185', '#f43f5e', '#e11d48', '#be123c'];
+    const activeColor = redShades[score - 1];
+
+    icons.forEach((icon, index) => {
+        if (index < score) {
+            icon.classList.add('active');
+            icon.style.filter = 'grayscale(0%)';
+            icon.style.color = activeColor;
+        } else {
+            icon.classList.remove('active');
+            icon.style.filter = 'grayscale(100%) brightness(30%)';
+            icon.style.color = 'inherit';
+        }
+    });
+}
+
+
+
+    function updateWeekInfo() {
+    const dateInput = document.getElementById('review-date'); // 请注意：这里 ID 要和 HTML 对应
+    // 建议统一使用：
+    const input = document.getElementById('period-input'); 
+    const display = document.getElementById('week-display');
+
+    if (!input.value) {
+        display.classList.add('hidden');
+        return;
+    }
+
+    const selectedDate = new Date(input.value);
+    const day = selectedDate.getDate(); 
+    const month = selectedDate.getMonth() + 1;
+    const weekNum = Math.ceil(day / 7);
+
+    display.innerText = `${month}月 | 第 ${weekNum} 周`;
+    display.classList.remove('hidden');
+    display.style.display = 'inline-block'; // 强制显示
+}
+       function showPage(pageId) {
+    // 隐藏所有页面
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    // 取消所有按钮高亮
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    
+    // 显示目标页面
+    const targetPage = document.getElementById('page-' + pageId);
+    const targetBtn = document.getElementById('nav-' + pageId);
+    
+    if(targetPage) targetPage.classList.add('active');
+    if(targetBtn) targetBtn.classList.add('active');
+
+    // 针对特定页面的初始化逻辑
+    if (pageId === 'time') generateWeeklyGrid();
+    if (pageId === 'analysis') updateAnalysisPage();
+    
+    window.scrollTo(0, 0);
+}
+        //精力卡分数更新函数
+        function updateScore(id, val) {
+    const badge = document.getElementById(id + '-val');
+    badge.innerText = val;
+    
+    // 动态调整数字颜色：越往右越红
+    const red = Math.floor((val - 1) * 25.5);
+    const green = Math.floor(255 - (val - 1) * 25.5);
+    badge.style.color = `rgb(${red}, ${green}, 0)`;
+}
+
+// --- 1. 下载 PDF 功能 (保存完整页面视觉) ---
+async function downloadAsImage() {
+    const element = document.getElementById('page-input');
+    
+    // 1. 按钮状态反馈
+    const btn = event.currentTarget;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = "<span>⌛ 正在校准评分并生成图片...</span>";
+    btn.disabled = true;
+
+    // 2. 预处理：修复滑块 Thumb 和 图标显示不准的问题
+    const tempMarkers = [];
+    const originalStyles = []; // 记录原始样式以便恢复
+
+    // --- 核心修复：处理点赞和爱心图标 ---
+    const allIcons = element.querySelectorAll('.thumb-icon, .heart-icon');
+    allIcons.forEach(icon => {
+        // 保存原始样式
+        originalStyles.push({
+            el: icon,
+            filter: icon.style.filter,
+            opacity: icon.style.opacity,
+            color: icon.style.color
+        });
+
+        if (!icon.classList.contains('active')) {
+            // 对未激活的图标：强制设为浅灰色，并去掉所有滤镜
+            icon.style.filter = 'none';
+            icon.style.color = '#e5e7eb'; // 浅灰色
+            icon.style.opacity = '0.3';   // 低透明度
+        } else {
+            // 对已激活的图标：强制移除滤镜，确保显示它本身的颜色
+            icon.style.filter = 'none';
+            icon.style.opacity = '1';
+        }
+    });
+
+    // --- 修复滑块标记点 ---
+    const sliders = element.querySelectorAll('.range-slider');
+    sliders.forEach(slider => {
+        const percent = (slider.value - slider.min) / (slider.max - slider.min);
+        const marker = document.createElement('div');
+        marker.style.cssText = `
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: #374151;
+            border: 2px solid white;
+            border-radius: 50%;
+            z-index: 100;
+            top: ${slider.offsetTop + 5}px;
+            left: ${slider.offsetLeft + (slider.offsetWidth * percent) - 7}px;
+        `;
+        slider.parentElement.appendChild(marker);
+        tempMarkers.push(marker);
+    });
+
+    try {
+        // 3. 执行截图
+        const canvas = await html2canvas(element, {
+            scale: 3,               // 保持高清晰度
+            useCORS: true,
+            logging: false,
+            backgroundColor: "#f9fafb",
+            scrollY: -window.scrollY,
+            onclone: (clonedDoc) => {
+                // 展开所有 textarea，确保文字不被截断
+                const textareas = clonedDoc.querySelectorAll('textarea');
+                textareas.forEach(ta => {
+                    ta.style.height = ta.scrollHeight + 'px';
+                });
+            }
+        });
+
+        // 4. 下载图片
+        const imgData = canvas.toDataURL("image/png", 1.0);
+        const link = document.createElement('a');
+        const name = document.getElementById('name-display').innerText.replace('点击输入', '匿名');
+        const date = document.getElementById('period-display').innerText.replace('选择日期', '日期未定');
+        
+        link.download = `复盘长图_${name}_${date}.png`;
+        link.href = imgData;
+        link.click();
+
+    } catch (err) {
+        console.error("导出失败:", err);
+        alert("图片导出失败，请重试");
+    } finally {
+        // 5. 还原：移除临时标记，恢复图标原始样式
+        tempMarkers.forEach(m => m.remove());
+        originalStyles.forEach(item => {
+            item.el.style.filter = item.filter;
+            item.el.style.opacity = item.opacity;
+            item.el.style.color = item.color;
+        });
+        
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+// --- 2. 下载事工数据 CSV (纯数据导出) ---
+function downloadMinistryCSV() {
+    // 获取基本信息
+    const name = document.getElementById('name-display').innerText;
+    const period = document.getElementById('period-display').innerText;
+    
+    // 获取事工复盘中的 4 个数字输入框
+    // 按照你在 HTML 中的顺序：福音预工、传福音挑战、决志、门训
+    const ministryInputs = document.querySelectorAll('.border-ministry input[type="number"]');
+    const dataRow = [
+        name,
+        period,
+        ministryInputs[0]?.value || 0,
+        ministryInputs[1]?.value || 0,
+        ministryInputs[2]?.value || 0,
+        ministryInputs[3]?.value || 0
+    ];
+
+    const headers = ["姓名", "复盘时段", "福音预工人数", "传福音挑战人数", "决志人数", "门训人数"];
+    
+    // 构建 CSV 内容 (处理中文乱码需加 BOM)
+    let csvContent = "\uFEFF"; // UTF-8 BOM
+    csvContent += headers.join(",") + "\n";
+    csvContent += dataRow.join(",") + "\n";
+
+    // 创建下载链接
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `事工数据_${name}_${period}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+//时间表
+
+
+// 存储当前周每一天的具体日期字符串 (格式: YYYY-MM-DD)
+let currentWeekDates = {};
+
+/**
+ * 处理日期选择：计算周一并更新表头日期显示
+ */
+function handleWeekDateChange(selectedDateStr) {
+    if (!selectedDateStr) return;
+
+    const selectedDate = new Date(selectedDateStr);
+    // 获取选定日是周几 (0是周日, 1-6是周一到周六)
+    const day = selectedDate.getDay();
+    // 计算差距：如果选的是周日(0)，要退回6天到周一；如果选周一(1)，退回0天
+    const diffToMonday = selectedDate.getDate() - (day === 0 ? 6 : day - 1);
+    
+    const monday = new Date(selectedDate.setDate(diffToMonday));
+
+    // 循环计算并显示周一到周日的日期
+    for (let i = 1; i <= 7; i++) {
+        const currentDate = new Date(monday);
+        currentDate.setDate(monday.getDate() + (i - 1));
+        
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const date = String(currentDate.getDate()).padStart(2, '0');
+        const dateString = `${year}-${month}-${date}`;
+        
+        // 保存到全局变量，供点击格子时使用
+        currentWeekDates[i] = dateString;
+        
+        // 更新表头显示 (如: 05/22)
+        const label = document.getElementById(`date-label-${i}`);
+        if (label) label.innerText = `${month}/${date}`;
+    }
+    
+    // 同时也把 picker 的日期锁定为周一，让用户看清楚
+    document.getElementById('week-start-picker').value = currentWeekDates[1];
+    
+    // 日期变了，重新渲染格子，因为格子的点击事件需要绑定新日期
+    generateWeeklyGrid();
+}
+
+
+let currentCategory = 'work';
+
+function setCategory(cat) {
+    currentCategory = cat;
+    // 可以增加按钮高亮效果
+}
+
+// 初始化 24 小时时间块
+function initTimeGrid() {
+    const grid = document.getElementById('time-grid');
+    grid.innerHTML = '';
+    for (let i = 0; i < 24; i++) {
+        const block = document.createElement('div');
+        block.className = 'time-block';
+        block.innerHTML = `<span>${i}:00</span>`;
+        block.onclick = function() {
+            // 循环切换状态或设为当前选中分类
+            this.className = 'time-block ' + currentCategory;
+        };
+        grid.appendChild(block);
+    }
+}
+
+
+
+// 初始化时添加一行空数据
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('event-table-body')) {
+        addTimeRow(); 
+    }
+});
+
+function addTimeRow() {
+    const tbody = document.getElementById('event-table-body');
+    const rowId = 'row-' + Date.now();
+    const tr = document.createElement('tr');
+    tr.id = rowId;
+    tr.className = "border-b border-gray-50 hover:bg-gray-50/50 transition-colors";
+
+    tr.innerHTML = `
+        <td class="py-4 px-2">
+            <div class="flex flex-col gap-1">
+                <input type="date" class="table-input text-[12px]" onchange="updateDayOfWeek('${rowId}'); generateWeeklyGrid();">
+                <span class="day-of-week text-[10px] text-gray-400 font-bold px-2">待定</span>
+            </div>
+        </td>
+        <td class="py-4 px-2">
+            <div class="flex items-center gap-1">
+                <input type="time" class="table-input start-time" onchange="calculateDuration('${rowId}'); generateWeeklyGrid();">
+                <span class="text-gray-300">-</span>
+                <input type="time" class="table-input end-time" onchange="calculateDuration('${rowId}'); generateWeeklyGrid();">
+            </div>
+        </td>
+        <td class="py-4 px-2">
+            <span class="duration-badge duration-text">0h</span>
+        </td>
+        <td class="py-4 px-2">
+            <input type="text" class="table-input" placeholder="做了什么..." oninput="generateWeeklyGrid()">
+        </td>
+        <td class="py-4 px-2">
+            <select class="table-input text-[12px] font-medium" onchange="generateWeeklyGrid()">
+                <option value="👥 团队时间">👥 团队时间</option>
+                <option value="🌾 禾场事工">🌾 禾场事工</option>
+                <option value="📅 计划准备">📅 计划准备</option>
+                <option value="📚 个人发展">📚 个人发展</option>
+                <option value="⛪ 教会事工">⛪ 教会事工</option>
+                <option value="⚙️ 其他任务">⚙️ 其他任务</option>
+            </select>
+        </td>
+        <td class="py-4 px-2 text-center">
+            <button onclick="removeRow('${rowId}')" class="text-gray-300 hover:text-red-500 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    // 每次点击“添加事件”按钮时，也刷新一次（虽然新行是空的）
+    generateWeeklyGrid();
+}
+
+
+
+
+// 分类与颜色的映射关系
+const categoryStyles = {
+    "👥 团队时间": "dot-team",
+    "🌾 禾场事工": "dot-field",
+    "📅 计划准备": "dot-plan",
+    "📚 个人发展": "dot-grow",
+    "⛪ 教会事工": "dot-church",
+    "⚙️ 其他任务": "dot-other"
+};
+
+let currentEditingRowId = null; // 记录当前模态框正在操作哪一行数据
+
+// 映射分类到主题色
+const categoryThemes = {
+    "👥 团队时间": "theme-team",
+    "🌾 禾场事工": "theme-field",
+    "📅 计划准备": "theme-plan",
+    "📚 个人发展": "theme-grow",
+    "⛪ 教会事工": "theme-church",
+    "⚙️ 其他任务": "theme-other"
+};
+
+// 1. 修改 generateWeeklyGrid 里的格子生成逻辑
+// 修订版：支持半小时步长渲染
+function generateWeeklyGrid() {
+    const gridContainer = document.getElementById('weekly-time-grid');
+    if (!gridContainer) return;
+
+    // 1. 重置网格内容
+    gridContainer.innerHTML = '';
+
+    // 2. 循环生成 06:00 到 24:00 的半小时行
+    // step 为 0.5，代表半小时
+    for (let hour = 6; hour <= 23.5; hour += 0.5) {
+        const row = document.createElement('div');
+        row.className = "grid grid-cols-8 gap-1";
+        
+        // 格式化左侧时间标签
+        const h = Math.floor(hour);
+        const m = (hour % 1 === 0) ? "00" : "30";
+        const timeLabel = `${h.toString().padStart(2, '0')}:${m}`;
+        
+        // 样式微调：半点时间颜色更浅
+        const labelOpacity = (m === "30") ? "opacity-30" : "font-bold text-gray-400";
+
+        row.innerHTML = `<div class="flex items-center justify-center text-[8px] ${labelOpacity} font-mono h-6">${timeLabel}</div>`;
+        
+        for (let day = 1; day <= 7; day++) {
+            // 使用特定的 slotId，包含小时和分钟，例如 slot-1-6.5
+            const slotId = `slot-${day}-${hour}`;
+            row.innerHTML += `
+                <div id="${slotId}" 
+                     onclick="openModal('${day}', '${hour}')" 
+                     class="time-slot bg-gray-50/50 text-[9px] text-transparent border border-gray-100 h-6">
+                </div>`;
+        }
+        gridContainer.appendChild(row);
+    }
+
+    // 3. 填充数据逻辑
+    eventData.forEach(ev => {
+        if (ev.date && ev.start && ev.end) {
+            const dateObj = new Date(ev.date);
+            let dayOfWeek = dateObj.getDay() || 7; 
+
+            // 将 "HH:mm" 转换为浮点数以便比较（例如 "06:30" -> 6.5）
+            const parseTimeToFloat = (timeStr) => {
+                const [h, m] = timeStr.split(':').map(Number);
+                return h + (m >= 30 ? 0.5 : 0);
+            };
+
+            const startFloat = parseTimeToFloat(ev.start);
+            const endFloat = parseTimeToFloat(ev.end);
+
+            // 循环填充对应区间的半小时格子
+            for (let h = startFloat; h < endFloat; h += 0.5) {
+                const slot = document.getElementById(`slot-${dayOfWeek}-${h}`);
+                if (slot) {
+                    const style = categoryStyles[ev.category] || 'dot-other';
+                    slot.className = `time-slot ${style} shadow-sm px-1 text-gray-800 font-medium overflow-hidden h-6`;
+                    
+                    // 绑定点击事件用于编辑
+                    slot.onclick = (e) => {
+                        e.stopPropagation();
+                        openModal(dayOfWeek, h, ev.id);
+                    };
+                    
+                    // 仅在开始格显示文字
+                    if (h === startFloat) {
+                        slot.innerText = ev.desc || ev.category.substring(2);
+                    }
+                }
+            }
+        }
+    });
+    updateTimeDistribution();
+}
+// 2. 模态框交互逻辑
+// 辅助修订：模态框初始化时间支持半小时
+function openModal(day, hour, rowId = null) {
+    currentEditingRowId = rowId;
+    const modal = document.getElementById('event-modal');
+    const deleteBtn = document.getElementById('modal-delete-btn');
+    
+    // 将浮点数 hour 转回 HH:mm 格式
+    const floatToTime = (f) => {
+        const h = Math.floor(f).toString().padStart(2, '0');
+        const m = (f % 1 === 0) ? "00" : "30";
+        return `${h}:${m}`;
+    };
+
+    if (rowId) {
+        const ev = eventData.find(e => e.id === rowId);
+        document.getElementById('m-desc').value = ev.desc;
+        document.getElementById('m-start').value = ev.start;
+        document.getElementById('m-end').value = ev.end;
+        document.getElementById('m-cat').value = ev.category;
+        deleteBtn.classList.remove('hidden');
+        document.getElementById('modal-title').innerText = "编辑事件";
+    } else {
+        document.getElementById('m-desc').value = "";
+        const startTime = floatToTime(parseFloat(hour));
+        const endTime = floatToTime(parseFloat(hour) + 0.5); // 默认步长半小时
+        document.getElementById('m-start').value = startTime;
+        document.getElementById('m-end').value = endTime;
+        deleteBtn.classList.add('hidden');
+        document.getElementById('modal-title').innerText = "新增事件";
+        modal.dataset.tempDate = currentWeekDates[day] || "";
+    }
+    
+    updateModalTheme();
+    modal.classList.remove('hidden');
+}
+
+
+function updateModalTheme() {
+    const cat = document.getElementById('m-cat').value;
+    const content = document.getElementById('modal-content');
+    const themeClass = categoryThemes[cat] || 'theme-other';
+    
+    // 清除旧主题类
+    Object.values(categoryThemes).forEach(t => content.classList.remove(t));
+    content.classList.add(themeClass);
+    
+    // 同时更新所有输入框边框色
+    const inputs = document.querySelectorAll('#modal-content input, #modal-content select');
+    inputs.forEach(i => {
+        i.classList.remove(...Object.values(categoryThemes).map(t => t.replace('theme-', 'border-')));
+        const borderColor = themeClass.replace('theme-', 'border-');
+        i.style.borderColor = getComputedStyle(content).borderColor;
+    });
+}
+
+// 修改保存逻辑：不再操作 DOM 表格，而是操作数组
+function saveModalEvent() {
+    const desc = document.getElementById('m-desc').value;
+    const start = document.getElementById('m-start').value;
+    const end = document.getElementById('m-end').value;
+    const category = document.getElementById('m-cat').value;
+    const date = document.getElementById('event-modal').dataset.tempDate;
+
+    if (currentEditingRowId) {
+        // 编辑模式：更新数组中的对象
+        const index = eventData.findIndex(ev => ev.id === currentEditingRowId);
+        if (index !== -1) {
+            eventData[index] = { ...eventData[index], desc, start, end, category };
+        }
+    } else {
+        // 新增模式：推入新对象
+        eventData.push({
+            id: 'ev-' + Date.now(),
+            date: date,
+            start: start,
+            end: end,
+            category: category,
+            desc: desc
+        });
+    }
+    
+    generateWeeklyGrid();
+    closeModal();
+}
+
+
+function deleteModalEvent() {
+    if (currentEditingRowId && confirm("确定要删除此事件吗？")) {
+        eventData = eventData.filter(ev => ev.id !== currentEditingRowId);
+        generateWeeklyGrid();
+        closeModal();
+    }
+}
+function closeModal() {
+    document.getElementById('event-modal').classList.add('hidden');
+    currentEditingRowId = null;
+}
+
+
+
+// 自动更新周几
+function updateDayOfWeek(rowId) {
+    const row = document.getElementById(rowId);
+    const dateVal = row.querySelector('input[type="date"]').value;
+    const weekSpan = row.querySelector('.day-of-week');
+    
+    if (dateVal) {
+        const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const d = new Date(dateVal);
+        weekSpan.innerText = days[d.getDay()];
+        weekSpan.classList.replace('text-gray-400', 'text-indigo-500');
+    }
+}
+
+// 自动计算时长
+function calculateDuration(rowId) {
+    const row = document.getElementById(rowId);
+    const start = row.querySelector('.start-time').value;
+    const end = row.querySelector('.end-time').value;
+    const durationText = row.querySelector('.duration-text');
+
+    if (start && end) {
+        const [h1, m1] = start.split(':').map(Number);
+        const [h2, m2] = end.split(':').map(Number);
+        
+        let diffMinutes = (h2 * 60 + m2) - (h1 * 60 + m1);
+        
+        // 如果跨天处理（比如 23:00 到 01:00）
+        if (diffMinutes < 0) diffMinutes += 1440;
+
+        const hours = (diffMinutes / 60).toFixed(1);
+        durationText.innerText = hours + 'h';
+        
+        // 如果时长超过 4 小时，给个明显的颜色提醒
+        if (hours >= 4) {
+            durationText.style.background = '#fef2f2';
+            durationText.style.color = '#ef4444';
+        } else {
+            durationText.style.background = '#eef2ff';
+            durationText.style.color = '#4338ca';
+        }
+    }
+}
+
+function removeRow(rowId) {
+    const row = document.getElementById(rowId);
+    if (document.querySelectorAll('#event-table-body tr').length > 1) {
+        row.remove();
+    } else {
+        row.querySelectorAll('input').forEach(i => i.value = '');
+        row.querySelector('.duration-text').innerText = '0h';
+        row.querySelector('.day-of-week').innerText = '待定';
+    }
+    // 关键：删除后刷新图表
+    generateWeeklyGrid();
+}
+
+// 修改原有的 showPage 函数，在切换到 time 页面时初始化网格
+const originalShowPage = showPage;
+showPage = function(pageId) {
+    originalShowPage(pageId);
+    if (pageId === 'time') {
+        initTimeGrid();
+    }
+};
+
+// 页面加载完成后默认初始化一次
+document.addEventListener('DOMContentLoaded', () => {
+    // 可以在这里做一些初始化工作
+});
+
+
+// 映射分类到具体的颜色值（用于绘图）
+const categoryHexColors = {
+    "👥 团队时间": "#dbeafe",
+    "🌾 禾场事工": "#fef3c7",
+    "📅 计划准备": "#de7e5c",
+    "📚 个人发展": "#dcfce7",
+    "⛪ 教会事工": "#f3e8ff",
+    "⚙️ 其他任务": "#f3f4f6"
+};
+
+function updateTimeDistribution() {
+    const bar = document.getElementById('distribution-bar');
+    const legend = document.getElementById('distribution-legend');
+    const totalBadge = document.getElementById('total-hours-badge');
+    const tooltip = document.getElementById('distribution-tooltip');
+    
+    if (!bar) return;
+
+    // 1. 整理数据：按分类汇总时长和事件列表
+    let stats = {}; 
+    let totalMinutes = 0;
+
+    // 过滤掉没有日期或时间的无效数据
+    const validEvents = eventData.filter(ev => ev.start && ev.end);
+
+    validEvents.forEach(ev => {
+        const [h1, m1] = ev.start.split(':').map(Number);
+        const [h2, m2] = ev.end.split(':').map(Number);
+        let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (diff < 0) diff += 1440;
+
+        if (!stats[ev.category]) {
+            stats[ev.category] = { total: 0, items: [] };
+        }
+        stats[ev.category].total += diff;
+        stats[ev.category].items.push({
+            desc: ev.desc || "未命名事件",
+            duration: (diff / 60).toFixed(1)
+        });
+        totalMinutes += diff;
+    });
+
+    // 2. 清空容器
+    bar.innerHTML = '';
+    legend.innerHTML = '';
+    totalBadge.innerText = `总计: ${(totalMinutes / 60).toFixed(1)}h`;
+
+    if (totalMinutes === 0) {
+        bar.classList.add('bg-gray-100');
+        return;
+    } else {
+        bar.classList.remove('bg-gray-100');
+    }
+
+    // 3. 循环生成色块
+    Object.keys(categoryStyles).forEach(cat => {
+        const data = stats[cat];
+        if (data && data.total > 0) {
+            const percentage = (data.total / totalMinutes * 100).toFixed(1);
+            const hours = (data.total / 60).toFixed(1);
+            
+            // 创建进度条色块
+            const segment = document.createElement('div');
+            segment.className = `h-full transition-all hover:brightness-90 hover:scale-y-125 duration-200 cursor-help`;
+            segment.style.width = `${percentage}%`;
+            
+            // 动态获取颜色（兼容已有的 dot- 类名）
+            const tempEl = document.createElement('div');
+            tempEl.className = categoryStyles[cat];
+            document.body.appendChild(tempEl);
+            const bgColor = getComputedStyle(tempEl).backgroundColor;
+            document.body.removeChild(tempEl);
+            segment.style.backgroundColor = bgColor;
+
+            // --- 关键交互：鼠标悬停显示时长和百分比 ---
+            segment.onmouseenter = (e) => {
+                tooltip.classList.remove('hidden');
+                // 标题显示：分类名称 + 总时长 + 百分比
+                document.getElementById('tooltip-cat').innerHTML = `
+                    <div class="flex justify-between items-center w-full gap-4">
+                        <span>${cat}</span>
+                        <span class="text-indigo-300 font-mono">${hours}h (${percentage}%)</span>
+                    </div>
+                `;
+                
+                const itemsHtml = data.items.map(item => `
+                    <div class="flex justify-between gap-6 opacity-80 hover:opacity-100">
+                        <span class="truncate max-w-[120px]">• ${item.desc}</span>
+                        <span class="font-mono text-gray-400">${item.duration}h</span>
+                    </div>
+                `).join('');
+                document.getElementById('tooltip-items').innerHTML = itemsHtml || '<div class="text-gray-500 italic">无详情</div>';
+            };
+
+            segment.onmousemove = (e) => {
+                const container = document.getElementById('time-distribution-container');
+                const rect = container.getBoundingClientRect();
+                
+                // 计算相对坐标
+                let x = e.clientX - rect.left;
+                let y = e.clientY - rect.top;
+
+                // 边界处理：防止 Tooltip 超出右侧
+                const tooltipWidth = tooltip.offsetWidth;
+                if (x + tooltipWidth > rect.width) {
+                    x = x - tooltipWidth - 10;
+                } else {
+                    x = x + 10;
+                }
+
+                tooltip.style.left = `${x}px`;
+                tooltip.style.top = `${y - tooltip.offsetHeight - 15}px`;
+            };
+
+            segment.onmouseleave = () => {
+                tooltip.classList.add('hidden');
+            };
+
+            bar.appendChild(segment);
+
+            // 4. 填充图例
+            const legendItem = document.createElement('div');
+            legendItem.className = "flex items-center gap-1 text-[9px] text-gray-500 font-medium";
+            legendItem.innerHTML = `<span class="w-1.5 h-1.5 rounded-full" style="background-color: ${bgColor}"></span><span class="truncate">${cat.substring(2)}</span>`;
+            legend.appendChild(legendItem);
+        }
+    });
+}
+
+// 定义参考值 (单位: 小时)
+const REFERENCE_VALUES = {
+    "👥 团队时间": 8,
+    "🌾 禾场事工": 24,
+    "📅 计划准备": 4,
+    "📚 个人发展": 4,
+    "⛪ 教会事工": 3,
+    "⚙️ 其他任务": 2
+};
+
+function updateAnalysisPage() {
+    const analysisGrid = document.getElementById('analysis-grid');
+    const adviceEl = document.getElementById('strategy-advice');
+    if (!analysisGrid) return;
+
+    // 1. 汇总实际数据
+    let actualStats = {};
+    Object.keys(REFERENCE_VALUES).forEach(cat => actualStats[cat] = 0);
+
+    eventData.forEach(ev => {
+        if (ev.start && ev.end) {
+            const [h1, m1] = ev.start.split(':').map(Number);
+            const [h2, m2] = ev.end.split(':').map(Number);
+            let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+            if (diff < 0) diff += 1440;
+            if (actualStats[ev.category] !== undefined) {
+                actualStats[ev.category] += (diff / 60);
+            }
+        }
+    });
+
+    // 2. 渲染 UI
+    analysisGrid.innerHTML = '';
+    let totalDeviation = 0;
+
+    Object.keys(REFERENCE_VALUES).forEach(cat => {
+        const actual = actualStats[cat];
+        const target = REFERENCE_VALUES[cat];
+        const percent = Math.min((actual / target) * 100, 100);
+        const isOver = actual > target;
+        const diffValue = (actual - target).toFixed(1);
+
+        const card = document.createElement('div');
+        card.className = "p-4 rounded-xl border border-gray-100 bg-white shadow-sm";
+        card.innerHTML = `
+            <div class="flex justify-between items-end mb-2">
+                <div>
+                    <span class="text-xs font-bold text-gray-500 block mb-1">${cat}</span>
+                    <span class="text-lg font-black">${actual.toFixed(1)} <span class="text-[10px] text-gray-400">/ ${target}h</span></span>
+                </div>
+                <span class="text-[10px] font-bold ${isOver ? 'text-orange-500' : 'text-indigo-500'}">
+                    ${isOver ? '超出' : '达成'} ${Math.abs((actual/target*100)).toFixed(0)}%
+                </span>
+            </div>
+            <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div class="h-full transition-all duration-1000 ${isOver ? 'bg-orange-400' : 'bg-indigo-500'}" 
+                     style="width: ${percent}%"></div>
+            </div>
+            <div class="mt-2 text-[10px] ${actual === 0 ? 'text-gray-300' : (isOver ? 'text-orange-400' : 'text-gray-400')}">
+                ${actual === 0 ? '暂无记录' : (isOver ? `⚠️ 比参考值多 ${diffValue}h` : `🎯 距离目标还差 ${Math.abs(diffValue)}h`)}
+            </div>
+        `;
+        analysisGrid.appendChild(card);
+        totalDeviation += (actual - target);
+    });
+
+    // 3. 生成动态建议
+    generateAdvice(actualStats, adviceEl);
+}
+
+function generateAdvice(stats, el) {
+    let advice = "";
+    if (stats["🌾 禾场事工"] < 15) {
+        advice = "💡 禾场投入明显不足，请检查是否被琐事占用了核心事工时间。";
+    } else if (stats["⚙️ 其他任务"] > 5) {
+        advice = "⚠️ 其他任务（杂事）占用过多，建议下周进行‘断舍离’。";
+    } else if (stats["📚 个人发展"] < 2) {
+        advice = "📚 个人发展时间过低，长期如此容易导致枯竭，请务必安排学习时间。";
+    } else {
+        advice = "✨ 时间分配相对均衡，继续保持目前的节奏！";
+    }
+    el.innerText = advice;
+}
+
+// 初始化职责焦点表格：默认增加三行
+document.addEventListener('DOMContentLoaded', () => {
+    // 如果是在职责焦点页面，初始化几行
+    const focusBody = document.getElementById('focus-table-body');
+    if (focusBody && focusBody.children.length === 0) {
+        for(let i=0; i<3; i++) addFocusRow();
+    }
+});
+
+function addFocusRow() {
+    const tbody = document.getElementById('focus-table-body');
+    const rowId = 'focus-' + Date.now() + Math.random().toString(16).slice(2, 8);
+    const tr = document.createElement('tr');
+    tr.id = rowId;
+    tr.className = "group border-b border-gray-50 hover:bg-gray-50/30 transition-colors";
+
+    tr.innerHTML = `
+        <td class="py-4 px-2 align-top">
+            <input type="text" class="table-input font-bold text-indigo-900 bg-transparent focus:bg-white" placeholder="输入核心项目...">
+        </td>
+        <td class="py-4 px-2 align-top">
+            <textarea class="table-input min-h-[40px] resize-none overflow-hidden bg-transparent focus:bg-white" 
+                      placeholder="• 行动点 1&#10;• 行动点 2" 
+                      oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+        </td>
+        <td class="py-4 px-2 text-center align-middle">
+            <button onclick="removeFocusRow('${rowId}')" class="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+}
+
+function removeFocusRow(rowId) {
+    const row = document.getElementById(rowId);
+    if (row) {
+        // 如果只剩最后一行，清空内容而不是删除
+        if (document.querySelectorAll('#focus-table-body tr').length > 1) {
+            row.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => row.remove(), 200);
+        } else {
+            row.querySelectorAll('input, textarea').forEach(i => i.value = '');
+        }
+    }
+}
+
+function saveFullPage() {
+    // 1. 固化当前页面的所有输入值到 HTML 属性中 (解决闪现的关键一步)
+    document.querySelectorAll('input').forEach(input => {
+        input.setAttribute('value', input.value);
+    });
+    document.querySelectorAll('textarea').forEach(textarea => {
+        textarea.innerHTML = textarea.value;
+    });
+    document.querySelectorAll('select').forEach(select => {
+        const options = select.querySelectorAll('option');
+        options.forEach((opt, idx) => {
+            if (idx === select.selectedIndex) opt.setAttribute('selected', 'selected');
+            else opt.removeAttribute('selected');
+        });
+    });
+
+    // 2. 克隆文档
+    const htmlClone = document.documentElement.cloneNode(true);
+
+    // 3. 准备注入脚本：强制锁定数据并重载渲染
+    const dataInjectionScript = `
+        <script>
+            // 注入数据
+            window.eventData = ${JSON.stringify(eventData)};
+            
+            window.addEventListener('load', () => {
+                // 确保全局变量被正确赋值
+                if (typeof eventData !== 'undefined') {
+                    eventData = window.eventData;
+                }
+                // 触发所有图表和网格的重绘
+                if (typeof generateWeeklyGrid === 'function') generateWeeklyGrid();
+                if (typeof updateAnalysisPage === 'function') updateAnalysisPage();
+                if (typeof updateTimeDistribution === 'function') updateTimeDistribution();
+            });
+        <\/script>
+    `;
+
+    // 4. 构建 HTML
+    let fullHtml = "<!DOCTYPE html>\n" + htmlClone.outerHTML;
+    fullHtml = fullHtml.replace('</head>', dataInjectionScript + '</head>');
+
+    // 5. 【文件名逻辑优化】获取姓名和复盘日期
+    const nameStr = document.getElementById('name-display')?.innerText.trim() || '未命名';
+    const periodStr = document.getElementById('period-display')?.innerText.trim() || '';
+    
+    // 清洗日期字符串，防止文件名包含非法字符 (如 / 或 :)
+    const cleanPeriod = periodStr.replace(/[\\/:*?"<>|]/g, '-');
+    const fileName = `复盘_${nameStr}_${cleanPeriod}.html`;
+
+    // 6. 执行下载
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+}
+   
+   
+   </script>
+
+<div id="event-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div id="modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all border-t-8">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h4 class="text-lg font-bold text-gray-800" id="modal-title">编辑事件</h4>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-1">事件描述</label>
+                    <input type="text" id="m-desc" class="w-full border-2 rounded-xl px-4 py-2 focus:outline-none transition-colors" placeholder="写下任务内容...">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1">开始时间</label>
+                        <input type="time" id="m-start" class="w-full border-2 rounded-xl px-4 py-2 focus:outline-none transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1">结束时间</label>
+                        <input type="time" id="m-end" class="w-full border-2 rounded-xl px-4 py-2 focus:outline-none transition-colors">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-1">事件分类</label>
+                    <select id="m-cat" onchange="updateModalTheme()" class="w-full border-2 rounded-xl px-4 py-2 focus:outline-none transition-colors bg-white">
+                        <option value="👥 团队时间">👥 团队时间</option>
+                        <option value="🌾 禾场事工">🌾 禾场事工</option>
+                        <option value="📅 计划准备">📅 计划准备</option>
+                        <option value="📚 个人发展">📚 个人发展</option>
+                        <option value="⛪ 教会事工">⛪ 教会事工</option>
+                        <option value="⚙️ 其他任务">⚙️ 其他任务</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button id="modal-delete-btn" onclick="deleteModalEvent()" class="flex-1 bg-red-50 text-red-600 font-bold py-3 rounded-xl hover:bg-red-100 transition-all hidden">删除</button>
+                    <button onclick="saveModalEvent()" class="flex-[2] bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">保存更改</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
